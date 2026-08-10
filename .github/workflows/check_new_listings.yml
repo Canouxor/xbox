@@ -1,0 +1,58 @@
+name: Check New Listings
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: check-listings
+  cancel-in-progress: false
+
+jobs:
+  check-listings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install requests playwright
+          playwright install --with-deps chromium
+
+      - name: Run listing checker
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python check_new_listings.py
+
+      - name: Commit seen files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          touch seen_vinted_it_takes_two_xbox.txt
+          git add seen_vinted_it_takes_two_xbox.txt
+          git diff --quiet && git diff --staged --quiet && exit 0
+          git commit -m "Update seen listings"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && break
+            echo "Push failed, retry $i"
+            sleep 5
+          done
+
+      - name: Upload debug files as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-vinted-html
+          path: debug_vinted_*.html
+          retention-days: 3
+          if-no-files-found: ignore
