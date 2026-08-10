@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from playwright.sync_api import sync_playwright
 import requests
@@ -18,6 +19,7 @@ SEARCHES = [
             "cle", "clé", "key",
         ],
         "must_contain_platform": ["xbox"],
+        "price_max": 20,
         "color": 0x107C10,
     },
 ]
@@ -40,6 +42,17 @@ def is_relevant(title, must_contain, must_exclude, must_contain_platform):
         return False
 
     return True
+
+def extract_price_value(price_text):
+    if price_text is None:
+        return None
+    match = re.search(r"([0-9]+[.,][0-9]{1,2})", price_text)
+    if match:
+        return float(match.group(1).replace(",", "."))
+    match_int = re.search(r"([0-9]+)\s*\u20ac", price_text)
+    if match_int:
+        return float(match_int.group(1))
+    return None
 
 def send_discord_embed(title, url, price, image_url, source_name, source_color):
     embed = {
@@ -107,6 +120,12 @@ def check_vinted_search(page, search_config):
                     price = price_el.inner_text().strip()
                 except Exception:
                     pass
+
+                price_value = extract_price_value(price)
+                price_max = search_config.get("price_max")
+                if price_max is not None:
+                    if price_value is None or price_value > price_max:
+                        continue
 
                 image_url = None
                 try:
